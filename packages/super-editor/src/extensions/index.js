@@ -206,6 +206,7 @@ const getStarterExtensions = () => {
     VerticalNavigation,
     PassthroughInline,
     PassthroughBlock,
+    Diffing,
   ];
 };
 

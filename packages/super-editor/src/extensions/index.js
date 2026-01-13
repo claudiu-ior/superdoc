@@ -164,6 +164,7 @@ const getStarterExtensions = () => {
     Image,
     BookmarkStart,
     BookmarkEnd,
+    PopoverPlugin,
     Mention,
     Collaboration,
     CollaborationCursor,

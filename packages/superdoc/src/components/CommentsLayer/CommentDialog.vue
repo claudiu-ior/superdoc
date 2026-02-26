@@ -994,9 +994,6 @@ watch(editingCommentId, (commentId) => {
   margin-left: 5px;
 }
 
-.internal-dropdown {
-  display: inline-block;
-}
 .comment-editing {
   padding-bottom: 10px;
 }

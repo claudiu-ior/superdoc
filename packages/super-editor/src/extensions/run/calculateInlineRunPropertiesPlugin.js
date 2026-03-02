@@ -107,9 +107,15 @@ export const calculateInlineRunPropertiesPlugin = (editor) =>
         if (isFirstInParagraph) {
           // Keep paragraph's default runProperties in sync for the first run.
           const currentParagraphRunProperties = paragraphNode.attrs?.paragraphProperties?.runProperties ?? null;
-          if (!areRunPropertiesEqual(currentParagraphRunProperties, runProperties)) {
+          const shouldPreserveParagraphRunProperties =
+            runNode.content.size === 0 && runProperties === null && currentParagraphRunProperties !== null;
+          const nextParagraphRunProperties = shouldPreserveParagraphRunProperties
+            ? currentParagraphRunProperties
+            : runProperties;
+
+          if (!areRunPropertiesEqual(currentParagraphRunProperties, nextParagraphRunProperties)) {
             const inlineParagraphProperties = carbonCopy(paragraphNode.attrs.paragraphProperties) || {};
-            inlineParagraphProperties.runProperties = runProperties;
+            inlineParagraphProperties.runProperties = nextParagraphRunProperties;
             tr.setNodeMarkup(paragraphPos, paragraphNode.type, {
               ...paragraphNode.attrs,
               paragraphProperties: inlineParagraphProperties,

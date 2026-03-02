@@ -743,6 +743,15 @@ export class PresentationEditor extends EventEmitter {
       if (win.scrollX !== beforeX || win.scrollY !== beforeY) {
         win.scrollTo(beforeX, beforeY);
       }
+
+      // Safety net: the browser may asynchronously scroll after ProseMirror's
+      // selectionToDOM() modifies the DOM selection inside the hidden editor.
+      // A single requestAnimationFrame catches this post-layout scroll.
+      win.requestAnimationFrame(() => {
+        if (win.scrollX !== beforeX || win.scrollY !== beforeY) {
+          win.scrollTo(beforeX, beforeY);
+        }
+      });
     };
   }
 

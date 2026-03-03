@@ -86,9 +86,13 @@ import { __mockSuperdoc } from './superdoc-store.js';
 import { comments_module_events } from '@superdoc/common';
 import useComment from '@superdoc/components/CommentsLayer/use-comment';
 import { syncCommentsToClients } from '../core/collaboration/helpers.js';
+import { groupChanges } from '../helpers/group-changes.js';
+import { trackChangesHelpers } from '@superdoc/super-editor';
 
 const useCommentMock = useComment;
 const syncCommentsToClientsMock = syncCommentsToClients;
+const groupChangesMock = groupChanges;
+const trackChangesHelpersMock = trackChangesHelpers;
 
 describe('comments-store', () => {
   let store;
@@ -99,6 +103,8 @@ describe('comments-store', () => {
     setActivePinia(createPinia());
     store = useCommentsStore();
     __mockSuperdoc.documents.value = [{ id: 'doc-1', type: 'docx' }];
+    groupChangesMock.mockReturnValue([]);
+    trackChangesHelpersMock.getTrackChanges.mockReturnValue([]);
   });
 
   afterEach(() => {
@@ -376,6 +382,61 @@ describe('comments-store', () => {
         comment: { commentId: 'change-1', trackedChangeText: 'new text', deletedText: 'removed' },
       }),
     );
+  });
+
+  it('prunes stale tracked-change comments and descendants during replay sync', () => {
+    const editorDispatch = vi.fn();
+    const tr = { setMeta: vi.fn() };
+    const editor = {
+      state: {},
+      view: { state: { tr }, dispatch: editorDispatch },
+      options: { documentId: 'doc-1' },
+    };
+
+    trackChangesHelpersMock.getTrackChanges.mockReturnValue([]);
+    groupChangesMock.mockReturnValue([]);
+
+    store.commentsList = [
+      { commentId: 'tc-stale', trackedChange: true },
+      { commentId: 'tc-reply', parentCommentId: 'tc-stale' },
+      { commentId: 'tc-import-reply', trackedChangeParentId: 'tc-stale' },
+      { commentId: 'normal-1', commentText: 'Regular comment' },
+    ];
+    store.activeComment = 'tc-reply';
+
+    store.syncTrackedChangeComments({ superdoc: {}, editor });
+
+    expect(store.commentsList).toEqual([{ commentId: 'normal-1', commentText: 'Regular comment' }]);
+    expect(store.activeComment).toBeNull();
+    expect(tr.setMeta).toHaveBeenCalledWith('CommentsPluginKey', { type: 'force' });
+    expect(editorDispatch).toHaveBeenCalledWith(tr);
+  });
+
+  it('keeps tracked-change comments whose IDs are still present in marks', () => {
+    const editorDispatch = vi.fn();
+    const tr = { setMeta: vi.fn() };
+    const editor = {
+      state: {},
+      view: { state: { tr }, dispatch: editorDispatch },
+      options: { documentId: 'doc-1' },
+    };
+
+    trackChangesHelpersMock.getTrackChanges.mockReturnValue([{ mark: { attrs: { id: 'tc-live' } } }]);
+    groupChangesMock.mockReturnValue([{ insertedMark: { mark: { attrs: { id: 'tc-live' } } } }]);
+
+    store.commentsList = [
+      { commentId: 'tc-live', trackedChange: true, trackedChangeText: 'Existing' },
+      { commentId: 'normal-1', commentText: 'Regular comment' },
+    ];
+
+    store.syncTrackedChangeComments({ superdoc: {}, editor });
+
+    expect(store.commentsList).toEqual([
+      { commentId: 'tc-live', trackedChange: true, trackedChangeText: 'Existing' },
+      { commentId: 'normal-1', commentText: 'Regular comment' },
+    ]);
+    expect(tr.setMeta).toHaveBeenCalledWith('CommentsPluginKey', { type: 'force' });
+    expect(editorDispatch).toHaveBeenCalledWith(tr);
   });
 
   it('should load comments with correct created time', () => {

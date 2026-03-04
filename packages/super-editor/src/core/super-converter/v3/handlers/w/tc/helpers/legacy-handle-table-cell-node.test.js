@@ -134,6 +134,14 @@ describe('legacy-handle-table-cell-node', () => {
 
     // rowspan derived from vertical merge (restart + 2 continuations)
     expect(out.attrs.rowspan).toBe(3);
+
+    // Inline keys from w:tcPr so export can avoid writing inherited table-style props (e.g. w:tcMar)
+    expect(out.attrs.tableCellPropertiesInlineKeys).toEqual(
+      expect.arrayContaining(['cellWidth', 'shading', 'gridSpan', 'cellMargins', 'vAlign', 'vMerge', 'borders']),
+    );
+    expect(out.attrs.tableCellPropertiesInlineKeys).toHaveLength(
+      Object.keys(out.attrs.tableCellProperties || {}).length,
+    );
   });
 
   it('blends percentage table shading into a solid background color', () => {

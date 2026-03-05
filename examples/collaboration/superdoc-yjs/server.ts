@@ -44,7 +44,8 @@ const handleOnChange = async (params: CollaborationParams): Promise<void> => {
 };
 
 const handleAutoSave = async (params: CollaborationParams): Promise<void> => {
-  console.debug('handleAutoSave] params', params)
+  console.debug('handleAutoSave]')
+  // console.debug('handleAutoSave] params', params)
 }
 
 

@@ -13,7 +13,7 @@ import type {
   DropCapRun,
   ParagraphFrame,
 } from '@superdoc/contracts';
-import type { PMNode } from '../types.js';
+import type { PMNode, ParagraphFont } from '../types.js';
 import type { ResolvedRunProperties } from '@superdoc/word-layout';
 import { computeWordParagraphLayout } from '@superdoc/word-layout';
 import { pickNumber, twipsToPx, isFiniteNumber, ptToPx } from '../utilities.js';
@@ -204,6 +204,7 @@ const extractDropCapRunFromParagraph = (para: PMNode, converterContext?: Convert
   const runAttrs = computeRunAttrs(
     resolvedRunProperties,
     converterContext,
+    undefined,
     DEFAULT_DROP_CAP_FONT_SIZE_PX,
     DEFAULT_DROP_CAP_FONT_FAMILY,
   );
@@ -229,6 +230,7 @@ const extractDropCapRunFromParagraph = (para: PMNode, converterContext?: Convert
 export const computeParagraphAttrs = (
   para: PMNode,
   converterContext?: ConverterContext,
+  previousParagraphFont?: ParagraphFont,
 ): { paragraphAttrs: ParagraphAttrs; resolvedParagraphProperties: ParagraphProperties } => {
   const attrs = para.attrs ?? {};
   const paragraphProperties = (attrs.paragraphProperties ?? {}) as ParagraphProperties;
@@ -298,7 +300,7 @@ export const computeParagraphAttrs = (
     paragraphAttrs.wordLayout = computeWordParagraphLayout({
       paragraph: paragraphAttrs,
       listRenderingAttrs: normalizedListRendering,
-      markerRun: computeRunAttrs(markerRunProperties, converterContext),
+      markerRun: computeRunAttrs(markerRunProperties, converterContext, previousParagraphFont),
     });
   }
 
@@ -308,20 +310,31 @@ export const computeParagraphAttrs = (
 export const computeRunAttrs = (
   runProps: RunProperties,
   converterContext?: ConverterContext,
+  previousParagraphFont?: ParagraphFont,
   defaultFontSizePx = 12,
   defaultFontFamily = 'Times New Roman',
 ): ResolvedRunProperties => {
   let fontFamily;
-  if (converterContext) {
+  let fontSize;
+
+  if (previousParagraphFont && previousParagraphFont.fontFamily) {
+    fontFamily = previousParagraphFont.fontFamily;
+  } else if (converterContext) {
     fontFamily =
       resolveDocxFontFamily(runProps.fontFamily as Record<string, unknown>, converterContext.docx) || defaultFontFamily;
   } else {
     fontFamily =
       runProps.fontFamily?.ascii || runProps.fontFamily?.hAnsi || runProps.fontFamily?.eastAsia || defaultFontFamily;
   }
+
+  if (previousParagraphFont && previousParagraphFont.fontSize) {
+    fontSize = previousParagraphFont.fontSize;
+  } else {
+    fontSize = runProps.fontSize ? ptToPx(runProps.fontSize / 2)! : defaultFontSizePx;
+  }
   return {
     fontFamily: toCssFontFamily(fontFamily)!,
-    fontSize: runProps.fontSize ? ptToPx(runProps.fontSize / 2)! : defaultFontSizePx,
+    fontSize,
     bold: runProps.bold,
     italic: runProps.italic,
     underline:

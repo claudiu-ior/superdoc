@@ -23,6 +23,7 @@ const SD_KEY_NAME = 'run';
  * Wraps the provided content in a SuperDoc run node.
  * runProperties = resolved (from combine). runPropertiesInlineKeys = keys marked inline at combine (export only these).
  * runPropertiesStyleKeys = keys from the run's style in styles.xml (export omits these).
+ * runPropertiesOverrideKeys = keys that override the style (inline ∩ style); export includes these to preserve user overrides.
  */
 const createRunNodeWithContent = (
   content,
@@ -31,6 +32,7 @@ const createRunNodeWithContent = (
   resolvedRunProperties,
   inlineKeysFromCombine,
   runPropertiesStyleKeys = null,
+  runPropertiesOverrideKeys = null,
 ) => {
   const node = {
     type: SD_KEY_NAME,
@@ -40,6 +42,7 @@ const createRunNodeWithContent = (
       runProperties: resolvedRunProperties,
       runPropertiesInlineKeys: inlineKeysFromCombine?.length ? inlineKeysFromCombine : null,
       runPropertiesStyleKeys: runPropertiesStyleKeys?.length ? runPropertiesStyleKeys : null,
+      runPropertiesOverrideKeys: runPropertiesOverrideKeys?.length ? runPropertiesOverrideKeys : null,
     },
   };
   if (runLevelMarks.length) {
@@ -152,6 +155,11 @@ const encode = (params, encodedAttrs = {}) => {
       runPropertiesStyleKeys = Object.keys(styleRPr);
     }
   }
+  // Keys that were in w:rPr and also in the style = explicit overrides; preserve on export
+  const runPropertiesOverrideKeys =
+    runPropertiesStyleKeys?.length && runPropertiesInlineKeysFromCombine?.length
+      ? runPropertiesInlineKeysFromCombine.filter((k) => runPropertiesStyleKeys.includes(k))
+      : null;
 
   const containsBreakNodes = filtered.some((child) => child?.type === 'lineBreak');
   if (!containsBreakNodes) {
@@ -162,6 +170,7 @@ const encode = (params, encodedAttrs = {}) => {
       resolvedRunProperties,
       runPropertiesInlineKeysFromCombine,
       runPropertiesStyleKeys,
+      runPropertiesOverrideKeys,
     );
     return defaultNode;
   }
@@ -182,6 +191,7 @@ const encode = (params, encodedAttrs = {}) => {
       resolvedRunProperties,
       runPropertiesInlineKeysFromCombine,
       runPropertiesStyleKeys,
+      runPropertiesOverrideKeys,
     );
     if (chunkNode) splitRuns.push(chunkNode);
     currentChunk = [];
@@ -197,6 +207,7 @@ const encode = (params, encodedAttrs = {}) => {
         resolvedRunProperties,
         runPropertiesInlineKeysFromCombine,
         runPropertiesStyleKeys,
+        runPropertiesOverrideKeys,
       );
       if (breakNode) splitRuns.push(breakNode);
     } else {
@@ -228,24 +239,20 @@ const decode = (params, decodedAttrs = {}) => {
   const runAttrs = runNodeForExport.attrs || {};
   const runProperties = runAttrs.runProperties || {};
   const inlineKeys = runAttrs.runPropertiesInlineKeys;
-  const savedStyleKeys = runAttrs.runPropertiesStyleKeys;
+  const styleKeys = runAttrs.runPropertiesStyleKeys;
+  const overrideKeys = runAttrs.runPropertiesOverrideKeys;
 
-  // Export only run properties that are inline and that override the run's style (or are not from style).
-  // When there are no inline keys, export nothing so we don't write inherited props into w:rPr.
-  let runPropertiesToExport = {};
-  if (Array.isArray(inlineKeys) && inlineKeys.length > 0) {
-    let styleKeys = Array.isArray(savedStyleKeys) ? savedStyleKeys : null;
-    if (styleKeys === null && runProperties?.styleId && params?.docx) {
-      const styleRPr = getParagraphStyleRunPropertiesFromStylesXml(params.docx, runProperties.styleId, params) || {};
-      styleKeys = Object.keys(styleRPr);
-    }
-    const exportKeys = inlineKeys.filter(
-      (k) => k in (runProperties || {}) && !(Array.isArray(styleKeys) && styleKeys.includes(k)),
-    );
-    if (exportKeys.length > 0) {
-      runPropertiesToExport = Object.fromEntries(exportKeys.map((k) => [k, runProperties[k]]));
-    }
-  }
+  // Export run properties that were inline or that override the style (so user overrides are preserved).
+  // Exclude keys that are style-only (in styleKeys but not in overrideKeys).
+  const candidateKeys = [...new Set([...(inlineKeys || []), ...(overrideKeys || [])])];
+  const exportKeys = candidateKeys.filter(
+    (k) =>
+      k in (runProperties || {}) &&
+      (!(Array.isArray(styleKeys) && styleKeys.includes(k)) ||
+        (Array.isArray(overrideKeys) && overrideKeys.includes(k))),
+  );
+  const runPropertiesToExport =
+    exportKeys.length > 0 ? Object.fromEntries(exportKeys.map((k) => [k, runProperties[k]])) : {};
 
   // Decode child nodes within the run
   const exportParams = {

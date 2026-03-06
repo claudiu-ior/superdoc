@@ -118,14 +118,17 @@ export const calculateInlineRunPropertiesPlugin = (editor) =>
         }
 
         const existingInlineKeys = runNode.attrs?.runPropertiesInlineKeys || [];
+        const styleKeys = runNode.attrs?.runPropertiesStyleKeys || [];
         const keysFromMarks = (segment) => {
           const textNode = segment.content?.find((n) => n.isText);
           return Object.keys(decodeRPrFromMarks(textNode?.marks || []));
         };
+        const overrideKeysFromInlineProps = (inlineProps) => styleKeys.filter((k) => inlineProps && k in inlineProps);
 
         if (segments.length === 1) {
           if (JSON.stringify(runProperties) === JSON.stringify(runNode.attrs.runProperties)) return;
           const newInlineKeys = [...new Set([...existingInlineKeys, ...keysFromMarks(segments[0])])];
+          const newOverrideKeys = overrideKeysFromInlineProps(runProperties);
           tr.setNodeMarkup(
             mappedPos,
             runNode.type,
@@ -133,6 +136,7 @@ export const calculateInlineRunPropertiesPlugin = (editor) =>
               ...runNode.attrs,
               runProperties,
               runPropertiesInlineKeys: newInlineKeys.length ? newInlineKeys : null,
+              runPropertiesOverrideKeys: newOverrideKeys.length ? newOverrideKeys : null,
             },
             runNode.marks,
           );
@@ -140,11 +144,13 @@ export const calculateInlineRunPropertiesPlugin = (editor) =>
           const newRuns = segments.map((segment) => {
             const props = segment.inlineProps ?? null;
             const segmentInlineKeys = [...new Set([...existingInlineKeys, ...keysFromMarks(segment)])];
+            const segmentOverrideKeys = overrideKeysFromInlineProps(props);
             return runType.create(
               {
                 ...(runNode.attrs ?? {}),
                 runProperties: props,
                 runPropertiesInlineKeys: segmentInlineKeys.length ? segmentInlineKeys : null,
+                runPropertiesOverrideKeys: segmentOverrideKeys.length ? segmentOverrideKeys : null,
               },
               Fragment.fromArray(segment.content),
               runNode.marks,

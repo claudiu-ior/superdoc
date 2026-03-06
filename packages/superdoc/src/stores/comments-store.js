@@ -335,6 +335,7 @@ export const useCommentsStore = defineStore('comments', () => {
       documentId,
       coords,
     } = params;
+    const normalizedDocumentId = documentId != null ? String(documentId) : null;
 
     const comment = getPendingComment({
       documentId,
@@ -354,8 +355,28 @@ export const useCommentsStore = defineStore('comments', () => {
       },
     });
 
+    const findTrackedChangeById = () => {
+      const normalizedChangeId = changeId != null ? String(changeId) : null;
+      if (!normalizedChangeId) return null;
+
+      const matchesId = (trackedComment) => {
+        if (!trackedComment) return false;
+        const commentId = trackedComment.commentId != null ? String(trackedComment.commentId) : null;
+        const importedId = trackedComment.importedId != null ? String(trackedComment.importedId) : null;
+        return commentId === normalizedChangeId || importedId === normalizedChangeId;
+      };
+
+      if (normalizedDocumentId) {
+        return commentsList.value.find(
+          (trackedComment) => matchesId(trackedComment) && belongsToDocument(trackedComment, normalizedDocumentId),
+        );
+      }
+
+      return commentsList.value.find(matchesId);
+    };
+
     if (event === 'add') {
-      const existing = commentsList.value.find((c) => c.commentId === changeId);
+      const existing = findTrackedChangeById();
       if (existing) {
         // Already exists (e.g. created during batch import) — update instead of duplicating
         // Partial resolution can turn a replacement into insert-only/delete-only, so
@@ -376,7 +397,7 @@ export const useCommentsStore = defineStore('comments', () => {
       addComment({ superdoc, comment });
     } else if (event === 'update') {
       // If we have an update event, simply update the composable comment
-      const existingTrackedChange = commentsList.value.find((comment) => comment.commentId === changeId);
+      const existingTrackedChange = findTrackedChangeById();
       if (!existingTrackedChange) return;
 
       // Partial resolution can turn a replacement into insert-only/delete-only, so
@@ -393,7 +414,7 @@ export const useCommentsStore = defineStore('comments', () => {
       syncCommentsToClients(superdoc, emitData);
       debounceEmit(changeId, emitData, superdoc);
     } else if (event === 'resolve') {
-      const existingTrackedChange = commentsList.value.find((comment) => comment.commentId === changeId);
+      const existingTrackedChange = findTrackedChangeById();
       if (!existingTrackedChange || existingTrackedChange.resolvedTime) return;
 
       // Selection/toolbar reject emits tracked-change resolve events. Use the same
@@ -789,6 +810,8 @@ export const useCommentsStore = defineStore('comments', () => {
   const createCommentForTrackChanges = (editor, superdoc, trackedChangesOverride = null) => {
     const trackedChanges = trackedChangesOverride ?? trackChangesHelpers.getTrackChanges(editor.state);
     const groupedChanges = groupChanges(trackedChanges);
+    const activeDocumentId = editor?.options?.documentId != null ? String(editor.options.documentId) : null;
+    if (!activeDocumentId) return;
 
     // Build a Set of existing tracked-change IDs for O(1) lookup.
     // Include both runtime and imported IDs to avoid duplicate threads when
@@ -796,6 +819,7 @@ export const useCommentsStore = defineStore('comments', () => {
     const existingIds = new Set();
     commentsList.value.forEach((comment) => {
       if (!comment?.trackedChange) return;
+      if (!belongsToDocument(comment, activeDocumentId)) return;
       if (comment.commentId != null) existingIds.add(String(comment.commentId));
       if (comment.importedId != null) existingIds.add(String(comment.importedId));
     });
@@ -809,7 +833,7 @@ export const useCommentsStore = defineStore('comments', () => {
       changesByIdMap.get(id).push(change);
     }
 
-    const documentId = editor.options.documentId;
+    const documentId = activeDocumentId;
 
     // Build comment params directly from grouped changes — no PM dispatch needed
     groupedChanges.forEach(({ insertedMark, deletionMark, formatMark }) => {
